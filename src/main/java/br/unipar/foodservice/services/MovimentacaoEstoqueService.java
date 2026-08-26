@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -40,6 +41,7 @@ public class MovimentacaoEstoqueService {
     private final LoteRepository loteRepository;
     private final UnidadeMedidaRepository unidadeRepository;
     private final UnidadeMedidaService unidadeService;
+    private final Clock clock;
 
     @Transactional
     public List<MovimentacaoEstoque> registrar(MovimentacaoEstoqueCreateRequest req) {
@@ -80,13 +82,12 @@ public class MovimentacaoEstoqueService {
      *                         a {@code unidadePadrao} do insumo.
      * @param quantidade       Quantidade na unidade informada (positiva).
      * @param justificativa    Texto livre (ex.: "SAIDA_VENDA — comanda M-12-001 — item #42").
-     * @return                 1..N movimentações criadas (uma por lote consumido).
      */
     @Transactional
-    public List<MovimentacaoEstoque> registrarSaidaVenda(Long insumoId,
-                                                         Long unidadeId,
-                                                         BigDecimal quantidade,
-                                                         String justificativa) {
+    public void registrarSaidaVenda(Long insumoId,
+                                    Long unidadeId,
+                                    BigDecimal quantidade,
+                                    String justificativa) {
         Insumo insumo = insumoRepository.findById(insumoId)
                 .orElseThrow(() -> new InvalidRequestException("Insumo não encontrado: " + insumoId));
         UnidadeMedida unidade = unidadeRepository.findById(unidadeId)
@@ -105,7 +106,7 @@ public class MovimentacaoEstoqueService {
                 null,            // validade (n/a)
                 null,            // codigoLote (n/a)
                 justificativa);
-        return processarSaida(sintetico, insumo, unidade, qtdNaPadrao);
+        processarSaida(sintetico, insumo, unidade, qtdNaPadrao);
     }
 
     /** ENTRADA_COMPRA / ENTRADA_TROCA — cria novo Lote (se loteId nulo) ou soma a um existente. */
@@ -126,7 +127,7 @@ public class MovimentacaoEstoqueService {
             if (req.validade() == null) {
                 throw new BusinessException("validade é obrigatória ao criar um novo lote em uma entrada.");
             }
-            if (req.validade().isBefore(LocalDate.now())) {
+            if (req.validade().isBefore(LocalDate.now(clock))) {
                 throw new BusinessException("Validade do lote não pode estar no passado.");
             }
             lote = Lote.builder()
@@ -228,7 +229,7 @@ public class MovimentacaoEstoqueService {
                 .quantidadeUnidadePadrao(qtdNaPadrao)
                 .custoUnitario(custo)
                 .justificativa(justificativa)
-                .dataHora(LocalDateTime.now())
+                .dataHora(LocalDateTime.now(clock))
                 .responsavel(usuarioCorrente())
                 .build();
         return repository.save(mov);
